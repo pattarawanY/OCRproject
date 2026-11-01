@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
-import { Sarabun } from "next/font/google";
+import { Kanit } from "next/font/google";
 import { AuthProvider } from "@/components/AuthProvider";
 import { Navbar } from "@/components/Navbar";
 import "./globals.css";
 
-const sarabun = Sarabun({
+const kanit = Kanit({
   subsets: ["thai", "latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-sarabun",
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-kanit",
 });
 
 export const metadata: Metadata = {
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="th">
-      <body className={`${sarabun.variable} font-sans antialiased`}>
+      <body className={`${kanit.variable} font-sans antialiased`}>
         <AuthProvider>
           <Navbar />
           <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>

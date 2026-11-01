@@ -54,12 +54,12 @@ export function Navbar() {
         <Link href="/" className="flex items-center gap-2 font-bold text-brand-700">
           <span className="rounded-md bg-brand-600 px-2 py-0.5 text-white">CS</span> SmartClaim
         </Link>
-        <button className="ml-auto rounded p-2 md:hidden" onClick={() => setOpen(!open)} aria-label="เมนู">
+        <button className="ml-auto rounded p-2 lg:hidden" onClick={() => setOpen(!open)} aria-label="เมนู">
           ☰
         </button>
         <nav
           className={cn(
-            "absolute left-0 right-0 top-full flex-col gap-1 border-b border-slate-200 bg-white p-3 md:static md:flex md:flex-1 md:flex-row md:items-center md:border-0 md:p-0",
+            "absolute left-0 right-0 top-full flex-col gap-1 border-b border-slate-200 bg-white p-3 lg:static lg:flex lg:flex-1 lg:flex-row lg:items-center lg:border-0 lg:p-0",
             open ? "flex" : "hidden",
           )}
         >
@@ -68,14 +68,14 @@ export function Navbar() {
               key={m.href}
               href={m.href}
               className={cn(
-                "rounded-md px-3 py-1.5 text-sm",
+                "whitespace-nowrap rounded-md px-3 py-1.5 text-sm",
                 pathname === m.href ? "bg-brand-50 font-semibold text-brand-700" : "text-slate-600 hover:bg-slate-100",
               )}
             >
               {m.label}
             </Link>
           ))}
-          <div className="flex items-center gap-2 md:ml-auto">
+          <div className="flex items-center gap-2 lg:ml-auto">
             {user ? (
               <>
                 {user.role !== "admin" && (

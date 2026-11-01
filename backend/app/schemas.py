@@ -2,7 +2,12 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
+import email_validator
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+
+# อนุญาตโดเมน .local ให้บัญชีทดสอบของเครื่องพัฒนา (เช่น admin@smartclaim.local)
+if "local" in email_validator.SPECIAL_USE_DOMAIN_NAMES:
+    email_validator.SPECIAL_USE_DOMAIN_NAMES.remove("local")
 
 RoleName = Literal["teacher", "staff", "admin"]
 Continent = Literal["Asia", "Europe", "America"]

@@ -15,9 +15,9 @@ export default function Home() {
   const { user } = useAuth();
   return (
     <div className="space-y-10">
-      <section className="rounded-2xl bg-gradient-to-br from-brand-600 to-orange-400 px-6 py-12 text-white sm:px-10">
+      <section className="rounded-2xl bg-gradient-to-br from-brand-600 to-sky-500 px-6 py-12 text-white sm:px-10">
         <h1 className="text-3xl font-bold sm:text-4xl">CS SmartClaim</h1>
-        <p className="mt-2 max-w-2xl text-lg text-orange-50">
+        <p className="mt-2 max-w-2xl text-lg text-blue-50">
           ระบบตรวจสอบเอกสารอนุมัติตัวและใบเสร็จรับเงินอัตโนมัติด้วย AI สำหรับภาควิชาวิทยาการคอมพิวเตอร์และสารสนเทศ
           มจพ.
         </p>
