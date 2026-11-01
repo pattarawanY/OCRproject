@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import DocumentSample, Receipt, ReceiptIssue, TravelRequest
-from app.services.extraction import extract_fields
+from app.services.extraction import extract_fields, tag_words
 from app.services.ocr import OCRError, OCRUnreadable, run_ocr
 from app.services.translation import TranslationError, detect_and_translate
 from app.services.validation import validate
@@ -30,12 +30,13 @@ def process_document(
     sample_id: int | None = None,
 ) -> Receipt:
     try:
-        text = run_ocr(content, mime, filename)
+        ocr = run_ocr(content, mime, filename)
     except OCRUnreadable as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     except OCRError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
 
+    text = ocr.text
     try:
         source_lang, translated = detect_and_translate(text)
     except TranslationError:
@@ -57,7 +58,12 @@ def process_document(
         sample_id=sample.sample_id if sample else None,
         mode=mode,
         image_file=image_file,
-        ocr_data={"raw_text": text, "fields": fields},
+        ocr_data={
+            "raw_text": text,
+            "fields": fields,
+            "words": tag_words(ocr.words, fields),
+            "demo_image": ocr.demo_image,
+        },
         translated_text=translated,
         source_language=source_lang,
         status="flagged" if issues else "valid",

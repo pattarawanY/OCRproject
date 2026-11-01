@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { OCRImageOverlay } from "@/components/OCRImageOverlay";
 import { OCRResult } from "@/components/OCRResult";
 import { Alert, Button, Card, Field, PageTitle, Select } from "@/components/ui";
-import { api } from "@/lib/api";
+import { API_URL, api } from "@/lib/api";
 import type { OCRCheckResult, RequestSummary } from "@/lib/types";
 
 /** สแกนใบเสร็จแบบ live-check: ใช้กล้องหรือเลือกไฟล์ ไม่ต้องเข้าสู่ระบบ */
@@ -19,6 +20,7 @@ export default function ScanPage() {
   const [requests, setRequests] = useState<RequestSummary[]>([]);
   const [targetId, setTargetId] = useState("");
   const [uploaded, setUploaded] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
 
   const isTeacher = user?.role === "teacher";
 
@@ -59,6 +61,10 @@ export default function ScanPage() {
     setError("");
     setResult(null);
     setUploaded(false);
+    setPreview((old) => {
+      if (old) URL.revokeObjectURL(old);
+      return file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
+    });
     const fd = new FormData();
     fd.append("file", file, name);
     try {
@@ -121,7 +127,7 @@ export default function ScanPage() {
               📁 เลือกไฟล์
               <input
                 type="file"
-                accept="image/jpeg,image/png,application/pdf"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -144,6 +150,16 @@ export default function ScanPage() {
               ✕ ปิดเพื่อสแกนใหม่
             </Button>
           </div>
+          {(result.receipt.ocr_data.demo_image || preview) && (
+            <OCRImageOverlay
+              src={
+                result.receipt.ocr_data.demo_image
+                  ? `${API_URL}/api/receipts/demo-image/${result.receipt.ocr_data.demo_image}`
+                  : preview!
+              }
+              words={result.receipt.ocr_data.words ?? []}
+            />
+          )}
           <OCRResult result={result} />
 
           {isTeacher && !uploaded && requests.length > 0 && (

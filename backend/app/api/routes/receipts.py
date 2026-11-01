@@ -1,6 +1,7 @@
 """สแกนใบเสร็จ (live-check) และจัดการข้อมูลที่ดึงได้จาก OCR"""
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -10,11 +11,21 @@ from app.db import get_db
 from app.models import Receipt, ReceiptIssue, RequestStatus as S, Role, User
 from app.schemas import OCRCheckResult, ReceiptOut
 from app.services.extraction import DOC_TYPES
+from app.services.ocr import demo_image_path
 from app.services.receipts import process_document
 from app.services.storage import ALLOWED_TYPES, save_upload
 from app.services.validation import element_options, validate
 
 router = APIRouter(prefix="/receipts", tags=["receipts / OCR"])
+
+
+@router.get("/demo-image/{name}")
+def demo_image(name: str):
+    """ภาพใบเสร็จสาธิตของโหมด mock (แสดงแทนภาพที่ผู้ใช้ถ่าย)"""
+    path = demo_image_path(name)
+    if path is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบภาพ")
+    return FileResponse(path)
 
 
 def _result(receipt: Receipt) -> OCRCheckResult:
@@ -37,7 +48,7 @@ async def live_check(
     else:
         mime = file.content_type or ""
         if mime not in ALLOWED_TYPES:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "ชนิดไฟล์ไม่รองรับ (รองรับเฉพาะ JPG, PNG และ PDF)")
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "ชนิดไฟล์ไม่รองรับ (รองรับเฉพาะ JPG, PNG, WEBP และ PDF)")
         path, content = None, await file.read()
     receipt = process_document(
         db, content=content, mime=mime, filename=file.filename or "", mode="live",

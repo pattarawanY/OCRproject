@@ -94,13 +94,19 @@ export interface ExtractedFields {
   [key: string]: unknown;
 }
 
+export interface OCRWord {
+  text: string;
+  box: [number, number, number, number];
+  field?: string | null;
+}
+
 export interface Receipt {
   receipt_id: number;
   request_id: number | null;
   sample_id: number | null;
   mode: "live" | "upload";
   image_file: string | null;
-  ocr_data: { raw_text?: string; fields?: ExtractedFields };
+  ocr_data: { raw_text?: string; fields?: ExtractedFields; words?: OCRWord[]; demo_image?: string | null };
   translated_text: string | null;
   source_language: string | null;
   status: "draft" | "flagged" | "valid" | "invalid";

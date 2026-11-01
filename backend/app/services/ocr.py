@@ -4,11 +4,17 @@
 ถ้าเป็น mock ระบบจะคืนข้อความตัวอย่าง เพื่อให้พัฒนาหน้าจอได้โดยไม่ต้องมีบัญชี Google Cloud
 """
 
+import json
 import logging
+from dataclasses import dataclass, field
+from pathlib import Path
 
-from app.core.config import settings
+from app.core.config import BASE_DIR, settings
 
 log = logging.getLogger(__name__)
+
+# ใบเสร็จตัวอย่างสำหรับสาธิตโหมด mock (ไฟล์ภาพ + ผล OCR พร้อมกรอบคำ) — ไม่เก็บใน git
+DEMO_DIR = BASE_DIR / "demo"
 
 
 class OCRError(Exception):
@@ -19,17 +25,43 @@ class OCRUnreadable(Exception):
     """อ่านข้อความจากภาพไม่ได้ (ภาพไม่ชัด)"""
 
 
-def run_ocr(content: bytes, mime: str, filename: str = "") -> str:
+@dataclass
+class OCRResult:
+    text: str
+    # แต่ละคำ: {"text": str, "box": [x0, y0, x1, y1]} พิกัดเป็นสัดส่วน 0-1 ของขนาดภาพ
+    words: list[dict] = field(default_factory=list)
+    # โหมด mock: ชื่อไฟล์ภาพใบเสร็จสาธิตที่หน้าเว็บควรแสดงแทนภาพที่ถ่าย
+    demo_image: str | None = None
+
+
+def run_ocr(content: bytes, mime: str, filename: str = "") -> OCRResult:
     if settings.ocr_provider == "google":
-        text = _google_ocr(content, mime)
+        result = _google_ocr(content, mime)
     else:
-        text = _mock_ocr(filename)
-    if not text or len(text.strip()) < 5:
+        result = _demo_fixture() or OCRResult(_mock_ocr(filename))
+    if not result.text or len(result.text.strip()) < 5:
         raise OCRUnreadable("ภาพไม่ชัดหรืออ่านข้อความไม่ได้ กรุณาถ่ายภาพใหม่อีกครั้ง")
-    return text
+    return result
 
 
-def _google_ocr(content: bytes, mime: str) -> str:
+def _google_words(annotation) -> list[dict]:
+    words = []
+    for page in annotation.pages:
+        w, h = page.width or 1, page.height or 1
+        for block in page.blocks:
+            for para in block.paragraphs:
+                for word in para.words:
+                    xs = [v.x for v in word.bounding_box.vertices]
+                    ys = [v.y for v in word.bounding_box.vertices]
+                    words.append({
+                        "text": "".join(s.text for s in word.symbols),
+                        "box": [round(min(xs) / w, 4), round(min(ys) / h, 4), round(max(xs) / w, 4), round(max(ys) / h, 4)],
+                    })
+        break  # วาดกรอบเฉพาะหน้าแรก
+    return words
+
+
+def _google_ocr(content: bytes, mime: str) -> OCRResult:
     try:
         from google.cloud import vision
 
@@ -43,12 +75,13 @@ def _google_ocr(content: bytes, mime: str) -> str:
             )
             result = client.batch_annotate_files(requests=[req])
             pages = result.responses[0].responses
-            return "\n".join(p.full_text_annotation.text for p in pages)
+            return OCRResult("\n".join(p.full_text_annotation.text for p in pages))
 
         response = client.document_text_detection(image=vision.Image(content=content))
         if response.error.message:
             raise OCRError(response.error.message)
-        return response.full_text_annotation.text
+        annotation = response.full_text_annotation
+        return OCRResult(annotation.text, _google_words(annotation))
     except OCRError:
         raise
     except Exception as exc:  # network / auth / quota
@@ -95,6 +128,24 @@ Twenty eight thousand four hundred fifty baht only
 Payment: Credit card
 Issued by: Thai Example Airways, 89 Vibhavadi Rangsit Road, Bangkok 10900
 """
+
+
+def demo_image_path(name: str) -> Path | None:
+    path = (DEMO_DIR / name).resolve()
+    if path.parent == DEMO_DIR.resolve() and path.suffix.lower() in (".webp", ".png", ".jpg", ".jpeg") and path.exists():
+        return path
+    return None
+
+
+def _demo_fixture() -> OCRResult | None:
+    """โหมด mock: ไม่ว่าจะถ่ายภาพอะไร คืนผล OCR ของใบเสร็จสาธิตใน backend/demo/ พร้อมกรอบคำ"""
+    if not DEMO_DIR.exists():
+        return None
+    for path in sorted(DEMO_DIR.glob("*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        image = next((p.name for p in DEMO_DIR.glob(f"{path.stem}.*") if demo_image_path(p.name)), None)
+        return OCRResult(data["raw_text"], data["words"], image)
+    return None
 
 
 def _mock_ocr(filename: str) -> str:

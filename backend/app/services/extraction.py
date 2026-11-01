@@ -53,10 +53,17 @@ def parse_dates(text: str) -> list[date]:
         d = _safe_date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
         if d:
             found.append((m.start(), d))
-    for m in re.finditer(r"\b(\d{4})-(\d{2})-(\d{2})\b", text):
+    for m in re.finditer(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b", text):
         d = _safe_date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
         if d:
             found.append((m.start(), d))
+    # March 17, 2026
+    for m in re.finditer(r"\b([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})\b", text):
+        mon = EN_MONTHS.get(m.group(1)[:3].upper())
+        if mon:
+            d = _safe_date(int(m.group(3)), mon, int(m.group(2)))
+            if d:
+                found.append((m.start(), d))
     for m in re.finditer(r"\b(\d{1,2})\s*([A-Za-z]{3})[A-Za-z]*\.?\s*(\d{2,4})\b", text):
         mon = EN_MONTHS.get(m.group(2).upper())
         if mon:
@@ -119,8 +126,14 @@ def extract_fields(text: str) -> dict:
     f["receipt_no"] = number.group(1) if number else None
 
     f["payee_name"] = lines[0] if lines else None
+    # ที่อยู่ผู้รับเงิน — ข้ามที่อยู่ผู้จ่าย (Bill To / ได้รับเงินจาก)
     addr = next(
-        (ln for ln in lines if re.search(r"ถนน|แขวง|เขต|ตำบล|อำเภอ|จังหวัด|Road|Street|\bSt\.|-ku|\b\d{5}\b", ln, re.I)),
+        (
+            ln
+            for ln in lines
+            if re.search(r"ถนน|แขวง|เขต|ตำบล|อำเภอ|จังหวัด|Road|Street|\bSt\.|-ku|\b\d{5}\b", ln, re.I)
+            and not re.match(r"Bill\s*To|ได้รับเงินจาก", ln, re.I)
+        ),
         None,
     )
     f["payee_address"] = addr
@@ -145,13 +158,30 @@ def extract_fields(text: str) -> dict:
     if cur and cur.group(0) in ("฿", "บาท"):
         f["currency"] = "THB"
 
+    # ใบเสร็จสกุลเงินต่างประเทศที่ระบุยอดแปลงเป็นบาท เช่น "600 USD x 32.619 บาท = 19,571.40 บาท"
+    thb = re.search(r"=\s*([\d,]+\.\d{2})\s*(?:บาท|THB)", text)
+    if thb and f["currency"] not in (None, "THB"):
+        f["original_amount"] = f"{f['amount']:,.2f} {f['currency']}" if f["amount"] else None
+        f["amount"] = _amount(thb.group(1))
+        f["currency"] = "THB"
+
     words = re.search(r"\(?([ก-๙]+บาท(?:ถ้วน)?[ก-๙]*)\)?", text) or re.search(
         r"([A-Za-z][A-Za-z\s\-]+\b(?:only|ONLY))", text
     )
     f["amount_in_words"] = words.group(1).strip() if words else None
 
-    desc = re.search(r"(?:รายการ|Description|Item)\s*[:]?\s*([^\n]+)", text, re.IGNORECASE)
-    f["description"] = desc.group(1).strip() if desc else None
+    # ข้ามบรรทัดหัวตาราง เช่น "Description | Amount"
+    f["description"] = next(
+        (
+            v
+            for m in re.finditer(r"(?:รายการ|Description|Item)\s*[:]?\s*([^\n]+)", text, re.IGNORECASE)
+            if (v := m.group(1).strip(" |:")) and not re.fullmatch(r"(?i)amount|จำนวนเงิน|price|ราคา", v)
+        ),
+        None,
+    )
+    if not f["description"]:
+        line = next((ln for ln in lines if re.search(r"registration fee|ค่าลงทะเบียน|room charge|ค่าที่พัก|ค่าโดยสาร", ln, re.I)), None)
+        f["description"] = line
 
     f["has_signature"] = bool(
         re.search(r"ผู้รับเงิน|ลงชื่อ|ลายมือชื่อ|signature|authorized|cashier|received by|issued by", text, re.I)
@@ -175,3 +205,30 @@ def extract_fields(text: str) -> dict:
         if isinstance(f[k], date):
             f[k] = f[k].isoformat()
     return f
+
+
+def tag_words(words: list[dict], fields: dict) -> list[dict]:
+    """ระบุว่าคำ (กรอบ) ใดเป็นข้อมูลสำคัญที่ระบบดึงได้ เพื่อให้หน้าเว็บไฮไลต์คนละสี"""
+    amounts = {fields.get("amount")}
+    if fields.get("original_amount"):
+        amounts.add(_amount(fields["original_amount"].split()[0]))
+    desc_tokens = {t.strip(":,").lower() for t in (fields.get("description") or "").split() if len(t) >= 5}
+    words_text = fields.get("amount_in_words") or ""
+
+    tagged = []
+    for w in words:
+        t = w["text"].strip()
+        bare = t.strip("(),:;")
+        tag = None
+        if fields.get("receipt_no") and bare == fields["receipt_no"]:
+            tag = "receipt_no"
+        elif fields.get("date") and any(d.isoformat() == fields["date"] for d in parse_dates(bare)):
+            tag = "date"
+        elif re.fullmatch(r"[\d,]+\.\d{2}", bare) and _amount(bare) in amounts:
+            tag = "amount"
+        elif words_text and len(bare) > 3 and (bare in words_text or words_text in bare):
+            tag = "amount_in_words"
+        elif bare.lower() in desc_tokens:
+            tag = "description"
+        tagged.append({**w, "field": tag})
+    return tagged

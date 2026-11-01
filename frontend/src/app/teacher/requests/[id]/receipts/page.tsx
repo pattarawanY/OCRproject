@@ -198,7 +198,7 @@ function SubmitReceipts() {
           <input
             type="file"
             multiple
-            accept="image/jpeg,image/png,application/pdf"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
             className="hidden"
             disabled={busy}
             onChange={(e) => {

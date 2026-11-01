@@ -15,6 +15,7 @@ const FIELD_LABELS: [string, string][] = [
   ["description", "รายการ"],
   ["amount", "จำนวนเงิน"],
   ["currency", "สกุลเงิน"],
+  ["original_amount", "ยอดเงินต้นฉบับ"],
   ["amount_in_words", "จำนวนเงิน (ตัวอักษร)"],
   ["tax_id", "เลขประจำตัวผู้เสียภาษี"],
   ["guest_name", "ชื่อผู้เข้าพัก/ผู้โดยสาร"],

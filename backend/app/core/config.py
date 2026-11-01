@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -49,3 +50,7 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+# ไลบรารีของ Google อ่าน path ไฟล์คีย์จาก environment variable โดยตรง (ค่าใน .env ไม่ถูก export ให้อัตโนมัติ)
+if settings.google_application_credentials:
+    os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", settings.google_application_credentials)

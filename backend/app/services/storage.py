@@ -8,6 +8,7 @@ from app.core.config import settings
 ALLOWED_TYPES = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
+    "image/webp": ".webp",
     "application/pdf": ".pdf",
 }
 
@@ -17,7 +18,7 @@ async def save_upload(file: UploadFile, subdir: str) -> tuple[str, bytes, str]:
     mime = file.content_type or ""
     if mime not in ALLOWED_TYPES:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "ชนิดไฟล์ไม่รองรับ (รองรับเฉพาะ JPG, PNG และ PDF)"
+            status.HTTP_400_BAD_REQUEST, "ชนิดไฟล์ไม่รองรับ (รองรับเฉพาะ JPG, PNG, WEBP และ PDF)"
         )
     content = await file.read()
     if len(content) > settings.max_upload_mb * 1024 * 1024:
