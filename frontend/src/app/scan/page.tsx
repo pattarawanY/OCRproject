@@ -99,10 +99,7 @@ export default function ScanPage() {
 
   return (
     <div className="space-y-6">
-      <PageTitle>สแกนใบเสร็จ (live-check)</PageTitle>
-      <p className="-mt-4 text-sm text-slate-600">
-        ตรวจสอบใบเสร็จหรือเอกสารการเดินทางเบื้องต้นว่ามีข้อมูลครบตามเกณฑ์การเบิกหรือไม่ รองรับ JPG, PNG และ PDF
-      </p>
+      <PageTitle>สแกนใบเสร็จ</PageTitle>
 
       <Card className="space-y-4">
         {cameraOn ? (
@@ -135,7 +132,7 @@ export default function ScanPage() {
             </label>
           </div>
         )}
-        {busy && <p className="text-sm text-slate-500">กำลังอ่านข้อมูลจากภาพและตรวจสอบตามเกณฑ์...</p>}
+        {busy && <p className="text-sm text-slate-500">กำลังตรวจสอบ...</p>}
         {error && <Alert kind="error">{error}</Alert>}
       </Card>
 
@@ -149,11 +146,10 @@ export default function ScanPage() {
           </div>
           <OCRResult result={result} />
 
-          {isTeacher && !uploaded && (
+          {isTeacher && !uploaded && requests.length > 0 && (
             <div className="space-y-3 border-t pt-4">
-              {requests.length ? (
-                <>
-                  <Field label="อัปโหลดเข้าคำขอที่ได้รับอนุมัติ">
+              <>
+                  <Field label="อัปโหลดเข้าคำขอ">
                     <Select value={targetId} onChange={(e) => setTargetId(e.target.value)}>
                       {requests.map((r) => (
                         <option key={r.request_id} value={r.request_id}>
@@ -165,16 +161,10 @@ export default function ScanPage() {
                   <Button onClick={attach} disabled={busy}>
                     ⬆ อัปโหลดใบเสร็จ
                   </Button>
-                </>
-              ) : (
-                <p className="text-sm text-slate-500">ยังไม่มีคำขอที่อยู่ในสถานะรอส่งใบเสร็จ</p>
-              )}
+              </>
             </div>
           )}
-          {uploaded && <Alert kind="success">อัปโหลดสำเร็จ — ไปที่หน้าส่งใบเสร็จของคำขอเพื่อยืนยันยอดเงินและส่งให้เจ้าหน้าที่</Alert>}
-          {!user && (
-            <p className="text-sm text-slate-500">เข้าสู่ระบบเพื่ออัปโหลดใบเสร็จเข้าคำขอเบิกจ่ายได้ทันที</p>
-          )}
+          {uploaded && <Alert kind="success">อัปโหลดสำเร็จ</Alert>}
         </Card>
       )}
     </div>

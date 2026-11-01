@@ -32,10 +32,10 @@ export function OCRResult({ result }: { result: OCRCheckResult }) {
     <div className="space-y-4">
       {result.passed ? (
         <Alert kind="success">
-          <span className="font-semibold">✓ ผ่านเกณฑ์</span> — เอกสารมีองค์ประกอบครบตามเกณฑ์การเบิกจ่ายเบื้องต้น
+          <span className="font-semibold">✓ ผ่านเกณฑ์</span>
         </Alert>
       ) : (
-        <WarningList title="✗ ไม่ผ่านเกณฑ์ — รายการที่ขาดหรือไม่ถูกต้อง" warnings={result.warnings} />
+        <WarningList title="✗ ไม่ผ่านเกณฑ์" warnings={result.warnings} />
       )}
 
       <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">

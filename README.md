@@ -31,6 +31,17 @@ Backend จะสร้างตารางและข้อมูลเริ
 | เจ้าหน้าที่ | staff@smartclaim.local | Staff1234 |
 | อาจารย์ | teacher@smartclaim.local | Teacher1234 |
 
+### เปิดบนมือถือ (ใช้กล้องสแกนใบเสร็จ)
+
+กล้องบนมือถือต้องใช้ HTTPS จึงเปิดผ่าน Cloudflare Tunnel (ฟรี ไม่ต้องสมัคร) — หน้าเว็บส่งต่อ `/api` ไปยัง backend เอง จึงใช้ลิงก์เดียว
+
+```bash
+winget install -e --id Cloudflare.cloudflared
+cloudflared tunnel --url http://localhost:3000
+```
+
+เปิดลิงก์ `https://….trycloudflare.com` ที่แสดงบนมือถือ (ลิงก์เปลี่ยนทุกครั้งที่เปิดใหม่ และใครมีลิงก์ก็เข้าได้ — ปิดด้วย Ctrl+C เมื่อเลิกใช้)
+
 ## รันแบบไม่ใช้ Docker
 
 ต้องมี Python 3.12+, Node.js 20+ และ PostgreSQL ที่สร้างฐานข้อมูล `smartclaim` (user/password `smartclaim`) ไว้แล้ว

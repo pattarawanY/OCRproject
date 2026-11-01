@@ -1,4 +1,5 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// เรียก API ผ่านโดเมนเดียวกัน (/api) — Next.js ส่งต่อไป backend ตาม BACKEND_URL ใน next.config.ts
+export const API_URL = "";
 
 const TOKEN_KEY = "smartclaim_token";
 
