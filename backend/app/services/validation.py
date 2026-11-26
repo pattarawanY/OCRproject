@@ -43,6 +43,29 @@ DEFAULT_REQUIRED = {
 }
 
 
+# หมวดค่าใช้จ่าย -> ประเภทเอกสารที่ต้องแนบ (อย่างน้อยหนึ่งประเภท) ตามคู่มือ KM งานการเงิน
+# ค่าเบี้ยเลี้ยงไม่ต้องมีใบเสร็จ
+REQUIRED_DOCUMENTS: dict[str, tuple[str, ...]] = {
+    "ค่าเดินทาง": ("itinerary_receipt", "substitute_receipt"),
+    "ค่าที่พัก": ("hotel_folio",),
+    "ค่าลงทะเบียน": ("registration_receipt",),
+}
+DOCUMENT_HINTS = {
+    "ค่าเดินทาง": "ใบเสร็จค่าโดยสารพร้อม Itinerary Receipt หรือใบรับรองแทนใบเสร็จรับเงิน",
+    "ค่าที่พัก": "ใบเสร็จ/ใบกำกับภาษีค่าที่พักพร้อมใบแจ้งรายการ (Folio)",
+    "ค่าลงทะเบียน": "ใบเสร็จค่าลงทะเบียน",
+}
+
+
+def missing_documents(categories: list[str], document_types: set[str]) -> list[str]:
+    """ตรวจว่าค่าใช้จ่ายแต่ละหมวดที่เบิกมีเอกสารประกอบครบ — คืนคำเตือน (non-blocking)"""
+    return [
+        f"ยังไม่ได้แนบเอกสารสำหรับ{cat}: {DOCUMENT_HINTS[cat]}"
+        for cat in dict.fromkeys(categories)
+        if cat in REQUIRED_DOCUMENTS and not document_types & set(REQUIRED_DOCUMENTS[cat])
+    ]
+
+
 def element_options() -> list[dict]:
     return [{"key": k, "label": v[0]} for k, v in ELEMENTS.items()]
 

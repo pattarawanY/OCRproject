@@ -44,6 +44,8 @@ export interface Trip {
   departure_datetime: string | null;
   arrival_location: string | null;
   arrival_datetime: string | null;
+  boarding_pass_file?: string | null;
+  e_ticket_file?: string | null;
 }
 
 export interface HotelStay {
@@ -54,6 +56,8 @@ export interface HotelStay {
   country: string | null;
   check_in_date: string | null;
   check_out_date: string | null;
+  folio_file?: string | null;
+  invoice_file?: string | null;
 }
 
 export interface StatusHistory {
@@ -69,6 +73,7 @@ export interface ReceiptIssue {
   issue_type: string;
   description: string;
   resolved: boolean;
+  reported_by: number | null;
 }
 
 export interface ExtractedFields {

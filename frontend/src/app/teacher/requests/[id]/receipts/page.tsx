@@ -5,10 +5,11 @@ import { useCallback, useEffect, useState } from "react";
 import { AuthFile } from "@/components/AuthFile";
 import { RequireRole } from "@/components/AuthProvider";
 import { OCRResult } from "@/components/OCRResult";
-import { Alert, Button, Card, Field, Input, PageTitle, WarningList } from "@/components/ui";
+import { Alert, Button, Card, Field, Input, PageTitle, Select, WarningList } from "@/components/ui";
 import { api, stashWarnings } from "@/lib/api";
 import { formatMoney } from "@/lib/constants";
 import type { ExtractedFields, OCRCheckResult, Receipt, RequestActionResult, TravelRequest } from "@/lib/types";
+import { useReceiptOptions } from "@/lib/useReceiptOptions";
 
 const EDITABLE: [keyof ExtractedFields, string][] = [
   ["book_no", "เล่มที่"],
@@ -19,7 +20,19 @@ const EDITABLE: [keyof ExtractedFields, string][] = [
   ["description", "รายการ"],
   ["amount", "จำนวนเงิน"],
   ["amount_in_words", "จำนวนเงิน (ตัวอักษร)"],
+  ["tax_id", "เลขประจำตัวผู้เสียภาษี"],
+  ["guest_name", "ชื่อผู้เข้าพัก/ผู้โดยสาร"],
+  ["check_in", "วันเข้าพัก (YYYY-MM-DD)"],
+  ["check_out", "วันออก (YYYY-MM-DD)"],
+  ["flight_numbers", "เที่ยวบิน (คั่นด้วย ,)"],
 ];
+
+// หมวดค่าใช้จ่าย -> ประเภทเอกสารที่ต้องแนบ (ตรงกับ REQUIRED_DOCUMENTS ใน backend/app/services/validation.py)
+const REQUIRED_DOCUMENTS: Record<string, string[]> = {
+  ค่าเดินทาง: ["itinerary_receipt", "substitute_receipt"],
+  ค่าที่พัก: ["hotel_folio"],
+  ค่าลงทะเบียน: ["registration_receipt"],
+};
 
 function toResult(r: Receipt): OCRCheckResult {
   const open = r.issues.filter((i) => !i.resolved);
@@ -27,18 +40,30 @@ function toResult(r: Receipt): OCRCheckResult {
 }
 
 function ReceiptCard({ receipt, onChange, onRemove }: { receipt: Receipt; onChange: (r: Receipt) => void; onRemove: () => void }) {
+  const ocrFailed = receipt.issues.some((i) => i.issue_type === "ocr_failed" && !i.resolved);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [signed, setSigned] = useState(false);
   const [error, setError] = useState("");
+  const { document_types } = useReceiptOptions();
   const fields = receipt.ocr_data.fields!;
 
   const startEdit = () => {
-    setDraft(Object.fromEntries(EDITABLE.map(([k]) => [k, fields[k] == null ? "" : String(fields[k])])));
+    const text = (v: unknown) => (v == null ? "" : Array.isArray(v) ? v.join(", ") : String(v));
+    setDraft({
+      document_type: fields.document_type,
+      ...Object.fromEntries(EDITABLE.map(([k]) => [k, text(fields[k])])),
+    });
+    setSigned(fields.has_signature);
     setEditing(true);
   };
+  useEffect(() => {
+    if (ocrFailed) startEdit(); // อ่านเอกสารไม่ได้ → เปิดฟอร์มให้กรอกข้อมูลเองทันที
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ocrFailed]);
   const save = async () => {
     setError("");
-    const payload: Record<string, unknown> = { ...draft };
+    const payload: Record<string, unknown> = { ...draft, has_signature: signed };
     payload.amount = draft.amount ? Number(draft.amount) : null;
     for (const k of Object.keys(payload)) if (payload[k] === "") payload[k] = null;
     try {
@@ -71,11 +96,29 @@ function ReceiptCard({ receipt, onChange, onRemove }: { receipt: Receipt; onChan
         {error && <Alert kind="error">{error}</Alert>}
         {editing ? (
           <div className="grid gap-2 sm:grid-cols-2">
+            {ocrFailed && (
+              <div className="sm:col-span-2">
+                <Alert kind="info">ระบบอ่านข้อความจากเอกสารนี้ไม่ได้ — อัปโหลดภาพที่ชัดขึ้น หรือกรอกข้อมูลตามเอกสารด้านล่าง</Alert>
+              </div>
+            )}
+            <Field label="ประเภทเอกสาร">
+              <Select value={draft.document_type ?? ""} onChange={(e) => setDraft({ ...draft, document_type: e.target.value })}>
+                {document_types.map((t) => (
+                  <option key={t.key} value={t.key}>
+                    {t.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
             {EDITABLE.map(([k, label]) => (
               <Field key={k as string} label={label}>
                 <Input value={draft[k as string] ?? ""} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} />
               </Field>
             ))}
+            <label className="flex items-center gap-2 text-sm sm:col-span-2">
+              <input type="checkbox" checked={signed} onChange={(e) => setSigned(e.target.checked)} />
+              มีลายมือชื่อผู้รับเงิน
+            </label>
             <div className="flex gap-2 sm:col-span-2">
               <Button onClick={save}>บันทึก</Button>
               <Button variant="ghost" onClick={() => setEditing(false)}>
@@ -177,9 +220,17 @@ function SubmitReceipts() {
 
   if (!req) return error ? <Alert kind="error">{error}</Alert> : <p className="text-slate-500">กำลังโหลด...</p>;
 
-  const allWarnings = req.receipts.flatMap((r) =>
-    r.issues.filter((i) => !i.resolved).map((i) => `ใบเสร็จ #${r.receipt_id}: ${i.description}`),
-  );
+  const docTypes = new Set(req.receipts.map((r) => r.ocr_data.fields?.document_type));
+  const missingDocs = req.expense_items
+    .filter((i) => Number(actuals[i.item_id]) > 0 && REQUIRED_DOCUMENTS[i.category])
+    .filter((i) => !REQUIRED_DOCUMENTS[i.category].some((t) => docTypes.has(t)))
+    .map((i) => `ยังไม่ได้แนบเอกสารสำหรับ${i.category}`);
+  const allWarnings = [
+    ...req.receipts.flatMap((r) =>
+      r.issues.filter((i) => !i.resolved).map((i) => `ใบเสร็จ #${r.receipt_id}: ${i.description}`),
+    ),
+    ...new Set(missingDocs),
+  ];
   const total = req.expense_items.reduce((s, i) => s + (Number(actuals[i.item_id]) || 0), 0);
   const estimated = Number(req.estimated_amount);
 

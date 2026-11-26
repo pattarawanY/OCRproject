@@ -1,8 +1,10 @@
 """สแกนใบเสร็จ (live-check) และจัดการข้อมูลที่ดึงได้จาก OCR"""
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.routes.requests import get_request_for
@@ -10,9 +12,9 @@ from app.core.deps import get_current_user, get_optional_user, require_roles
 from app.db import get_db
 from app.models import Receipt, ReceiptIssue, RequestStatus as S, Role, User
 from app.schemas import OCRCheckResult, ReceiptOut
-from app.services.extraction import DOC_TYPES
+from app.services.extraction import DOC_TYPE_CATEGORY, DOC_TYPES
 from app.services.ocr import demo_image_path
-from app.services.receipts import process_document
+from app.services.receipts import find_sample, process_document
 from app.services.storage import ALLOWED_TYPES, save_upload
 from app.services.validation import element_options, validate
 
@@ -109,12 +111,74 @@ def update_fields(
     if receipt is None or receipt.user_id != user.user_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบใบเสร็จ")
     ocr = dict(receipt.ocr_data or {})
-    ocr["fields"] = {**ocr.get("fields", {}), **data.fields, "edited_by_user": True}
+    fields = {**ocr.get("fields", {}), **data.fields, "edited_by_user": True}
+    for key in ("date", "check_in", "check_out"):
+        if fields.get(key):
+            try:
+                date.fromisoformat(fields[key])
+            except (TypeError, ValueError):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"รูปแบบวันที่ไม่ถูกต้อง ({fields[key]}) ต้องเป็น YYYY-MM-DD")
+    if isinstance(fields.get("flight_numbers"), str):
+        fields["flight_numbers"] = [f.strip().upper().replace(" ", "") for f in fields["flight_numbers"].split(",") if f.strip()]
+    doc_type = fields.get("document_type")
+    if doc_type in DOC_TYPES and doc_type != (receipt.ocr_data or {}).get("fields", {}).get("document_type"):
+        # เปลี่ยนประเภทเอกสาร → ใช้ตัวอย่างเอกสารและหมวดค่าใช้จ่ายของประเภทใหม่
+        fields["document_type_label"] = DOC_TYPES[doc_type]
+        fields["category"] = DOC_TYPE_CATEGORY.get(doc_type)
+        sample = find_sample(db, doc_type)
+        receipt.sample_id = sample.sample_id if sample else None
+        db.flush()
+        db.refresh(receipt, ["sample"])
+    ocr["fields"] = fields
     receipt.ocr_data = ocr
     _revalidate(receipt, receipt.request.approved_at if receipt.request else None)
     db.commit()
     db.refresh(receipt)
     return _result(receipt)
+
+
+class IssueIn(BaseModel):
+    description: str = Field(min_length=1)
+
+
+def _staff_receipt(db: Session, receipt_id: int) -> Receipt:
+    receipt = db.get(Receipt, receipt_id)
+    if receipt is None or receipt.request is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบใบเสร็จ")
+    if receipt.request.status != S.RECEIPT_SUBMITTED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "ระบุปัญหาได้เฉพาะใบเสร็จที่รอตรวจสอบ")
+    return receipt
+
+
+def _refresh_status(receipt: Receipt) -> None:
+    receipt.status = "flagged" if any(not i.resolved for i in receipt.issues) else "valid"
+
+
+@router.post("/{receipt_id}/issues", response_model=ReceiptOut, status_code=201)
+def report_issue(
+    receipt_id: int, data: IssueIn, staff: User = Depends(require_roles(Role.STAFF)), db: Session = Depends(get_db)
+):
+    """เจ้าหน้าที่ระบุปัญหาของใบเสร็จเพิ่มเติมจากที่ AI ตรวจพบ"""
+    receipt = _staff_receipt(db, receipt_id)
+    receipt.issues.append(ReceiptIssue(issue_type="staff_note", description=data.description, reported_by=staff.user_id))
+    _refresh_status(receipt)
+    db.commit()
+    db.refresh(receipt)
+    return receipt
+
+
+@router.post("/issues/{issue_id}/resolve", response_model=ReceiptOut)
+def resolve_issue(issue_id: int, _: User = Depends(require_roles(Role.STAFF)), db: Session = Depends(get_db)):
+    """เจ้าหน้าที่ตรวจแล้วว่าปัญหานี้ไม่กระทบการเบิก (เช่น OCR อ่านพลาดแต่เอกสารจริงครบ)"""
+    issue = db.get(ReceiptIssue, issue_id)
+    if issue is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบปัญหา")
+    receipt = _staff_receipt(db, issue.receipt_id)
+    issue.resolved = True
+    _refresh_status(receipt)
+    db.commit()
+    db.refresh(receipt)
+    return receipt
 
 
 @router.get("/{receipt_id}", response_model=ReceiptOut)

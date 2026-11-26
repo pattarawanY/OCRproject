@@ -2,7 +2,7 @@
 
 import { STATUS_LABEL, formatDate, formatMoney } from "@/lib/constants";
 import type { TravelRequest } from "@/lib/types";
-import { AuthFile } from "./AuthFile";
+import { AuthFile, FileLink } from "./AuthFile";
 import { StatusBadge, StatusProgress } from "./Status";
 import { Card } from "./ui";
 
@@ -91,8 +91,11 @@ export function RequestInfo({ req }: { req: TravelRequest }) {
             {req.trips.length ? (
               req.trips.map((t) => (
                 <p key={t.trip_id} className="text-sm">
-                  ✈ {t.airline} {t.flight_number} · {t.departure_location} → {t.arrival_location}{" "}
-                  <span className="text-slate-500">{formatDate(t.departure_datetime, true)}</span>
+                  ✈ {t.airline} {t.flight_number}
+                  {t.departure_location && ` · ${t.departure_location} → ${t.arrival_location ?? ""}`}{" "}
+                  {t.departure_datetime && <span className="text-slate-500">{formatDate(t.departure_datetime, true)}</span>}
+                  {t.e_ticket_file && <FileLink path={t.e_ticket_file} label="e-ticket" />}
+                  {t.boarding_pass_file && <FileLink path={t.boarding_pass_file} label="boarding pass" />}
                 </p>
               ))
             ) : (
@@ -104,10 +107,13 @@ export function RequestInfo({ req }: { req: TravelRequest }) {
             {req.hotel_stays.length ? (
               req.hotel_stays.map((h) => (
                 <p key={h.stay_id} className="text-sm">
-                  🏨 {h.hotel_name} · {h.city}, {h.country}{" "}
+                  🏨 {h.hotel_name}
+                  {h.city && ` · ${h.city}, ${h.country ?? ""}`}{" "}
                   <span className="text-slate-500">
                     {formatDate(h.check_in_date)} – {formatDate(h.check_out_date)}
                   </span>
+                  {h.folio_file && <FileLink path={h.folio_file} label="folio" />}
+                  {h.invoice_file && <FileLink path={h.invoice_file} label="ใบกำกับภาษี" />}
                 </p>
               ))
             ) : (
@@ -124,7 +130,7 @@ export function RequestInfo({ req }: { req: TravelRequest }) {
             <li key={h.history_id} className="text-sm">
               <span className="font-medium">{STATUS_LABEL[h.status]}</span>{" "}
               <span className="text-slate-500">{formatDate(h.changed_at, true)}</span>
-              {h.note && <p className="text-slate-600">{h.note}</p>}
+              {h.note && <p className="whitespace-pre-line text-slate-600">{h.note}</p>}
             </li>
           ))}
         </ol>

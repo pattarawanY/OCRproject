@@ -1,6 +1,6 @@
 """คำขออนุมัติไปราชการ: ยื่นคำขอ, พิจารณา, ส่งใบเสร็จ, ตรวจสอบใบเสร็จ, ดาวน์โหลด PDF"""
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -35,8 +35,9 @@ from app.schemas import (
 )
 from app.services.notify import notify, notify_staff
 from app.services.pdf import STATUS_TH, build_request_pdf
-from app.services.receipts import process_document
+from app.services.receipts import link_travel_documents, process_document
 from app.services.storage import delete_file, save_upload
+from app.services.validation import missing_documents
 from app.services.workflow import change_status, ensure_status
 
 router = APIRouter(prefix="/requests", tags=["travel requests"])
@@ -62,6 +63,15 @@ def _owned(db: Session, request_id: int, user: User) -> TravelRequest:
     if req.user_id != user.user_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "เฉพาะเจ้าของคำขอเท่านั้น")
     return req
+
+
+# แบบฟอร์มเดิมของภาควิชากำหนดให้ยื่นล่วงหน้าอย่างน้อย 5 วันทำการ (หัวข้อ 2.1)
+MIN_LEAD_BUSINESS_DAYS = 5
+
+
+def _business_days(start: date, end: date) -> int:
+    """จำนวนวันจันทร์-ศุกร์ตั้งแต่ start (รวม) ถึง end (ไม่รวม)"""
+    return sum(1 for n in range((end - start).days) if (start + timedelta(days=n)).weekday() < 5)
 
 
 def _budget_warning(user: User, amount: Decimal) -> list[str]:
@@ -98,6 +108,11 @@ def _submit(db: Session, req: TravelRequest, user: User) -> list[str]:
         warnings += _budget_warning(user, req.estimated_amount)
     if req.start_date < date.today():
         warnings.append("วันที่เริ่มต้นผ่านมาแล้ว กรุณาตรวจสอบกรอบเวลาการยื่นขออนุมัติ")
+    elif _business_days(date.today(), req.start_date) < MIN_LEAD_BUSINESS_DAYS:
+        warnings.append(
+            f"ยื่นล่วงหน้าน้อยกว่า {MIN_LEAD_BUSINESS_DAYS} วันทำการ (ต่างประเทศควรยื่นล่วงหน้า 2-3 เดือน) "
+            "คำขออาจดำเนินการไม่ทันกำหนด"
+        )
     req.submitted_at = _now()
     change_status(req, S.PENDING_APPROVAL, user, "ยื่นคำขออนุมัติไปราชการ")
     db.flush()
@@ -279,10 +294,16 @@ def submit_receipts(
             items[a.item_id].actual_amount = a.actual_amount
     req.actual_amount = sum((i.actual_amount or Decimal(0) for i in req.expense_items), Decimal(0))
 
+    claimed = [i.category for i in req.expense_items if i.actual_amount]
+    doc_types = {(r.ocr_data or {}).get("fields", {}).get("document_type") for r in receipts}
+    missing = missing_documents(claimed, doc_types)
     warnings = [f"ใบเสร็จ #{r.receipt_id}: {i.description}" for r in receipts for i in r.issues if not i.resolved]
-    warnings += _budget_warning(user, req.actual_amount)
+    warnings += missing + _budget_warning(user, req.actual_amount)
+    link_travel_documents(req)
 
-    change_status(req, S.RECEIPT_SUBMITTED, user, "ส่งใบเสร็จเพื่อเบิกจ่าย")
+    # คำเตือนเรื่องเอกสารไม่ครบบันทึกไว้ในประวัติสถานะ ให้เจ้าหน้าที่เห็นตอนตรวจ
+    note = "ส่งใบเสร็จเพื่อเบิกจ่าย" + ("\n" + "\n".join(missing) if missing else "")
+    change_status(req, S.RECEIPT_SUBMITTED, user, note)
     notify_staff(db, "มีใบเสร็จรอตรวจสอบ",
                  f"{user.full_name} ส่งใบเสร็จของคำขอ #{req.request_id} '{req.event_name}' "
                  f"ยอดรวม {req.actual_amount:,.2f} บาท", request_id=req.request_id)

@@ -35,3 +35,21 @@ export function AuthFile({ path, className }: { path: string; className?: string
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={url} alt="เอกสาร" className={className ?? "max-h-96 rounded-lg border object-contain"} />;
 }
+
+/** ลิงก์เปิดไฟล์ที่ต้องใช้ token ในแท็บใหม่ (เปิดแท็บก่อนโหลด เพื่อไม่ให้ถูกบล็อกป๊อปอัป) */
+export function FileLink({ path, label }: { path: string; label: string }) {
+  const open = async () => {
+    const tab = window.open("", "_blank");
+    try {
+      const url = URL.createObjectURL(await apiBlob(fileApiPath(path)));
+      if (tab) tab.location.href = url;
+    } catch {
+      tab?.close();
+    }
+  };
+  return (
+    <button type="button" onClick={open} className="ml-2 text-xs text-brand-600 underline">
+      📎 {label}
+    </button>
+  );
+}

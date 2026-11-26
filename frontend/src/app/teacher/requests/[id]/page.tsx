@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { RequireRole } from "@/components/AuthProvider";
+import { PdfPreview } from "@/components/PdfPreview";
 import { RequestInfo } from "@/components/RequestInfo";
 import { Alert, Button, WarningList } from "@/components/ui";
-import { api, download, popWarnings } from "@/lib/api";
+import { api, popWarnings } from "@/lib/api";
 import type { TravelRequest } from "@/lib/types";
 
 function RequestDetail() {
@@ -58,18 +59,7 @@ function RequestDetail() {
             <Button>ส่งใบเสร็จ</Button>
           </Link>
         )}
-        {req.status !== "draft" && (
-          <Button
-            variant="secondary"
-            onClick={() =>
-              download(`/requests/${req.request_id}/pdf`, `smartclaim_request_${req.request_id}.pdf`).catch((e) =>
-                setError(e.message),
-              )
-            }
-          >
-            ⬇ ดาวน์โหลด PDF
-          </Button>
-        )}
+        {req.status !== "draft" && <PdfPreview requestId={req.request_id} onError={setError} />}
       </div>
 
       <RequestInfo req={req} />

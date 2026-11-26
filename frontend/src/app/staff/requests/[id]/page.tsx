@@ -5,11 +5,52 @@ import { useCallback, useEffect, useState } from "react";
 import { AuthFile } from "@/components/AuthFile";
 import { RequireRole } from "@/components/AuthProvider";
 import { OCRResult } from "@/components/OCRResult";
+import { PdfPreview } from "@/components/PdfPreview";
 import { RequestInfo } from "@/components/RequestInfo";
-import { Alert, Button, Card, Field, Textarea } from "@/components/ui";
-import { api, download } from "@/lib/api";
+import { Alert, Button, Card, Field, Input, Textarea } from "@/components/ui";
+import { api } from "@/lib/api";
 import { formatMoney } from "@/lib/constants";
-import type { TravelRequest } from "@/lib/types";
+import type { Receipt, TravelRequest } from "@/lib/types";
+
+/** เจ้าหน้าที่ระบุปัญหาเพิ่ม หรือยืนยันว่าปัญหาที่ระบบตรวจพบแก้ไขแล้ว (เฉพาะใบเสร็จที่รอตรวจ) */
+function IssueManager({ receipt, onChange, onError }: { receipt: Receipt; onChange: (r: Receipt) => void; onError: (m: string) => void }) {
+  const [text, setText] = useState("");
+  const run = async (path: string, body?: unknown) => {
+    try {
+      onChange(await api<Receipt>(path, { method: "POST", body }));
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
+  return (
+    <div className="space-y-2 border-t pt-3 lg:col-span-2">
+      <p className="text-sm font-semibold">ปัญหาที่พบ</p>
+      {receipt.issues.map((i) => (
+        <div key={i.issue_id} className="flex items-center justify-between gap-2 text-sm">
+          <span className={i.resolved ? "text-slate-400 line-through" : ""}>
+            {i.reported_by ? "👤 " : "🤖 "}
+            {i.description}
+          </span>
+          {!i.resolved && (
+            <Button variant="ghost" onClick={() => run(`/receipts/issues/${i.issue_id}/resolve`)}>
+              ✓ ตรวจแล้ว
+            </Button>
+          )}
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <Input placeholder="ระบุปัญหาเพิ่มเติม" value={text} onChange={(e) => setText(e.target.value)} />
+        <Button
+          variant="secondary"
+          disabled={!text.trim()}
+          onClick={() => run(`/receipts/${receipt.receipt_id}/issues`, { description: text }).then(() => setText(""))}
+        >
+          เพิ่ม
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 type Action = "approve" | "reject" | "pass" | "fail" | null;
 
@@ -82,16 +123,7 @@ function StaffReview() {
             </Button>
           </>
         )}
-        <Button
-          variant="secondary"
-          onClick={() =>
-            download(`/requests/${req.request_id}/pdf`, `smartclaim_request_${req.request_id}.pdf`).catch((e) =>
-              setError(e.message),
-            )
-          }
-        >
-          ⬇ ดาวน์โหลด PDF
-        </Button>
+        <PdfPreview requestId={req.request_id} onError={setError} />
       </div>
 
       {action && (
@@ -127,6 +159,15 @@ function StaffReview() {
               <Card key={r.receipt_id} className="grid gap-4 lg:grid-cols-2">
                 <div>{r.image_file && <AuthFile path={r.image_file} className="w-full rounded border object-contain" />}</div>
                 <OCRResult result={{ receipt: r, passed: !open.length, warnings: open.map((i) => i.description) }} />
+                {req.status === "receipt_submitted" && (
+                  <IssueManager
+                    receipt={r}
+                    onError={setError}
+                    onChange={(nr) =>
+                      setReq({ ...req, receipts: req.receipts.map((x) => (x.receipt_id === nr.receipt_id ? nr : x)) })
+                    }
+                  />
+                )}
               </Card>
             );
           })}
